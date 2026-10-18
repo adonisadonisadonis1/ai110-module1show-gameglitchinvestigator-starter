@@ -58,6 +58,12 @@ Document at least 3 bugs you found. Add rows as needed.
 - Give one example of an AI suggestion that was correct (including what the AI suggested and how you verified the result).
 - Give one example of an AI suggestion you did not accept as written (including what the AI suggested, why you rejected or changed it, and how you verified your version). It does not have to be a suggestion that was wrong: over-engineered, out of scope, harder to read, or a poor fit for this codebase all count.
 
+I used Claude (Claude Code, running in the Claude desktop app) as my AI teammate. It ran the app in a built-in browser, read the code, and drafted fixes and tests for me to review. To investigate the two bugs I fixed, I opened two separate AI sessions, one per bug, so the context for one bug did not leak into the other. Each session only had read access to `app.py`, `logic_utils.py`, and `tests/test_game_logic.py`.
+
+**Accepted suggestion:** The session investigating Bug 2 (string comparison) suggested two things. First, stop converting the secret to a string on even attempts and always call `check_guess(guess_int, st.session_state.secret)`. Second, delete the `except TypeError` fallback in `check_guess` entirely instead of patching it. Its reasoning was that comparing numbers as text is never correct, so a type mix-up should raise an error instead of quietly returning a wrong hint. I accepted this because the fallback was what hid the bug in the first place: the game gave wrong answers without any console error. I verified it with a pytest test that expects `check_guess(9, "50")` to raise `TypeError`. That test failed against the original code ("DID NOT RAISE") and passes now. I also played the fixed game and checked that the hints were correct on both odd and even attempts.
+
+**Suggestion I modified:** Both AI sessions pointed out that `check_guess` in `app.py` returns a tuple `(outcome, message)`, but the existing tests compare its result to a plain string (`check_guess(50, 50) == "Win"`). Both suggested rewriting the existing tests to unpack the tuple (`outcome, _ = check_guess(...)`). I did not accept that, because the starter tests are the given spec and I wanted to keep them unchanged. Instead, I made `check_guess` return only the outcome and added a small `get_hint_message(outcome)` function in `logic_utils.py` for the message text. This also gave Bug 1's message a function of its own that I could test, which mattered because the existing tests only checked the outcome label, and the label was already correct. I verified the change by running the 3 original tests unchanged (all pass) and confirming that the new message tests fail against the original messages.
+
 ---
 
 ## 3. Debugging and testing your fixes
@@ -66,6 +72,30 @@ Document at least 3 bugs you found. Add rows as needed.
 - Describe at least one test you ran (manual or using pytest)  
   and what it showed you about your code.
 - Did AI help you design or understand any tests? How?
+
+I counted a bug as fixed only when three things were true: a pytest regression test failed on the original code, the same test passed on the new code, and the bug no longer showed up when I played the game in the browser.
+
+**Bug 1: Backwards hints.** *Cause:* `check_guess` paired "Too High" with "📈 Go HIGHER!" and "Too Low" with "📉 Go LOWER!". *Fix:* I moved `check_guess` into `logic_utils.py`, where it now returns only the outcome. The new `get_hint_message(outcome)` maps "Too High" to "📉 Go LOWER!" and "Too Low" to "📈 Go HIGHER!". *Tests:* `test_too_high_hint_says_go_lower` (guess 50, secret 5) and `test_too_low_hint_says_go_higher` (guess 3, secret 5). These use the same values that triggered the bug in Phase 1.
+
+**Bug 2: Secret compared as a string.** *Cause:* `app.py` turned the secret into a `str` on even attempts. `check_guess` then hit a `TypeError` comparing int with str, caught it, and compared the two values as text, so `"9" > "50"`. *Fix:* `app.py` now always passes the int secret, and the `except TypeError` fallback is removed. *Tests:* `test_comparison_is_numeric_not_alphabetical` (9 vs 50 → Too Low, 100 vs 50 → Too High) and `test_string_secret_is_not_silently_compared_as_text` (expects a `TypeError`).
+
+**Proving the tests catch the bugs.** I ran the new test file against the original `check_guess` from git, through a small adapter: `3 failed, 4 passed`. Both hint tests failed (`assert 'LOWER' in '📈 Go HIGHER!'`), and the TypeError test failed with `DID NOT RAISE`. The numeric comparison test passed even on the old code. That makes sense, because the old function compared ints correctly; the bug came from `app.py` passing in a string. That test is now a guard so the comparison stays numeric. After the fix:
+
+```
+$ python -m pytest -v
+tests/test_game_logic.py::test_winning_guess PASSED
+tests/test_game_logic.py::test_guess_too_high PASSED
+tests/test_game_logic.py::test_guess_too_low PASSED
+tests/test_game_logic.py::test_too_high_hint_says_go_lower PASSED
+tests/test_game_logic.py::test_too_low_hint_says_go_higher PASSED
+tests/test_game_logic.py::test_comparison_is_numeric_not_alphabetical PASSED
+tests/test_game_logic.py::test_string_secret_is_not_silently_compared_as_text PASSED
+============================== 7 passed in 0.01s ===============================
+```
+
+**Streamlit check.** I ran `python -m streamlit run app.py` and played on Normal with secret 23. Guess 30 showed "📉 Go LOWER!", 10 showed "📈 Go HIGHER!", 100 showed "📉 Go LOWER!", and 23 showed "🎉 Correct! You won! The secret was 23. Final score: 45". The 30 and 10 guesses fell on an even and an odd attempt, and the old code would have shown "Go HIGHER!" and "Go LOWER!" for them (both wrong). The server log showed no errors.
+
+AI helped with the tests. It suggested using the exact repro values from Phase 1, and checking the message text and not just the outcome label, since the label was never the broken part. One pitfall: the first attempt to run the tests against the old code reported 7 passes, because pytest was importing the fixed `logic_utils.py` from the project folder instead of the old code. Rerunning from the adapter's own folder gave the real `3 failed` result.
 
 ---
 
