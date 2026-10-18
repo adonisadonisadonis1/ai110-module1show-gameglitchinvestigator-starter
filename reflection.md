@@ -103,6 +103,8 @@ AI helped with the tests. It suggested using the exact repro values from Phase 1
 
 - How would you explain Streamlit "reruns" and session state to a friend who has never used Streamlit?
 
+Streamlit runs your whole Python script from top to bottom every time you interact with the page: clicking a button, pressing Enter in a text box, or changing a dropdown. That's a "rerun". Ordinary variables are rebuilt from scratch on every rerun, so anything the app needs to remember between clicks has to live in `st.session_state`, which is like a dictionary that survives reruns for as long as the browser tab is open. In this game, the line `if "secret" not in st.session_state:` is what keeps the secret number from changing on every click: it only picks a new number the first time. Reruns also explained two odd behaviors I saw. First, the Developer Debug Info panel always showed the score from one guess earlier, because it is drawn near the top of the script, before the Submit code further down updates the state. Second, "New Game" stayed stuck, because it changed some session values but left `status` as "won", and every rerun after that hit `st.stop()`.
+
 ---
 
 ## 5. Looking ahead: your developer habits
@@ -111,3 +113,9 @@ AI helped with the tests. It suggested using the exact repro values from Phase 1
   - This could be a testing habit, a prompting strategy, or a way you used Git.
 - What is one thing you would do differently next time you work with AI on a coding task?
 - In one or two sentences, describe how this project changed the way you think about AI generated code.
+
+**Habit to reuse:** writing a regression test that fails on the buggy code before trusting a fix. When I ran my new tests against the original `check_guess`, 3 of them failed, which proved they actually catch the bugs. Without that step, a test that passes might not be testing anything. I also learned that a test can pass for the wrong reason: one of my four tests passed on the old code too, because that bug lived in `app.py` and not in the function under test.
+
+**What I'd do differently:** commit as I go. I finished Phase 1 without committing, so the Phase 1 and Phase 2 changes piled up in the same file and had to be split into separate commits afterward. Next time I'll commit at the end of each step so the history shows the investigation, the fixes, and the docs as they happened.
+
+**How my view of AI-generated code changed:** AI-generated code can run without a single error and still be wrong. The `try/except TypeError` fallback silently hid Bug 2, so now I treat code that swallows errors as a warning sign rather than as "safe" code.
